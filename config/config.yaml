@@ -1,0 +1,136 @@
+log:
+  level: info
+  file: /etc/mosdns/mosdns.log
+
+plugins:
+  # 服务器插件
+  - tag: udp_server
+    type: udp_server
+    args:
+      entry: main_sequence
+      listen: :53
+
+  - tag: tcp_server
+    type: tcp_server
+    args:
+      entry: main_sequence
+      listen: :53
+
+  - tag: http_server
+    type: http_server
+    args:
+      entries:
+        - path: /dns-query
+          exec: main_sequence
+      src_ip_header: "X-Forwarded-For"
+      listen: :80
+      cert:
+      key:
+      idle_timeout: 10 # 空连接超时。单位秒。默认 30。
+
+  # 缓存
+  - tag: lazy_cache
+    type: cache
+    args:
+      size: 65536
+      lazy_cache_ttl: 172800
+      dump_file: /etc/mosdns/lazy_cache.dump
+      dump_interval: 1024
+
+  # 转发 公共dns，速度较快
+  - tag: forward_china_public
+    type: forward
+    args:
+      concurrent: 2
+      upstreams:
+        - addr: udp://114.114.114.114
+        - addr: udp://223.5.5.5
+
+  # 转发 自建递归dns
+  - tag: forward_china_recursive
+    type: forward
+    args:
+      concurrent: 1
+      upstreams:
+        - addr: udp://192.168.2.2:5353
+
+  # 转发 默认分流 国外安全dns
+  - tag: forward_default
+    type: forward
+    args:
+      concurrent: 1
+      upstreams:
+        - addr: udp://2602:f93b:151:ffff::1
+
+  - tag: reverse_lookup
+    type: reverse_lookup
+    args:
+      size: 65535 # 内置缓存大小。默认 65535。
+
+      # 缓存时间。秒。默认 7200 (2h)。应答记录的 TTL 也会被自动修改，限制在该值以下。
+      ttl: 7200
+      # 是否主动处理/响应 PTR 请求。如果 PTR 的 IP 命中缓存，则生成应答。
+      # 用途举例: 使用网络监视类工具查看网络连接时，开启域名反查功能大概率会看到 IP 对应的
+      # 真实域名(如果程序先请求域名再建立连接，而且域名经过了该插件处理。)
+      handle_ptr: true
+
+  # 国内domain
+  - tag: china_domain
+    type: domain_set
+    args:
+      files:
+        # https://github.com/pmkol/easymosdns/blob/main/rules/china_domain_list.txt
+        - /etc/mosdns/china_domain_list.txt
+
+  # 国内ip
+  - tag: china_ip
+    type: ip_set
+    args:
+      files:
+        # https://github.com/ACL4SSR/ACL4SSR/blob/master/Acl/china_ip_list.txt
+        - /etc/mosdns/china_ipv4_list.txt
+        # https://ispip.clang.cn/all_cn_ipv6.txt
+        - /etc/mosdns/china_ipv6_list.txt
+
+  - tag: common_domain_primary
+    type: sequence
+    args:
+      - exec: $forward_china_recursive
+      - matches: resp_ip $china_ip
+        exec: return
+        # exec: $forward_china_public
+      - matches: "!has_resp $china_ip"
+        exec: return
+        # exec: $forward_default
+
+  - tag: common_domain_secondary
+    type: sequence
+    args:
+      - exec: $forward_default
+
+  # common domain
+  - tag: common_domain
+    type: fallback
+    args:
+      primary: common_domain_primary
+      secondary: common_domain_secondary
+      threshold: 500
+      always_standby: true
+
+  - tag: main_sequence
+    type: sequence
+    args:
+      - exec: $reverse_lookup
+      - matches: has_resp
+        exec: accept
+
+      - exec: $cache
+      - matches: has_resp
+        exec: accept
+
+      - matches: qname $china_domain
+        exec: $forward_china_public
+      - matches: has_resp
+        exec: accept
+
+      - exec: $common_domain
