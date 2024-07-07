@@ -2,10 +2,13 @@ services:
   mosdns:
     image: irinesistiana/mosdns:latest
     container_name: mosdns
+    network_mode: bridge
+    # container need ipv6!
     restart: always
     ports:
       - "53:53/udp"
       - "53:53/tcp"
-      - "60080:80"
+      - "80:80"
+      # - "8080:8080"
     volumes:
-      - /etc/mosdns:/etc/mosdns
+      - ./config:/etc/mosdns

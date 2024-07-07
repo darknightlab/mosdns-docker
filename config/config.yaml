@@ -2,32 +2,10 @@ log:
   level: info
   file: /etc/mosdns/mosdns.log
 
+api:
+  http: :8080
+
 plugins:
-  # 服务器插件
-  - tag: udp_server
-    type: udp_server
-    args:
-      entry: main_sequence
-      listen: :53
-
-  - tag: tcp_server
-    type: tcp_server
-    args:
-      entry: main_sequence
-      listen: :53
-
-  - tag: http_server
-    type: http_server
-    args:
-      entries:
-        - path: /dns-query
-          exec: main_sequence
-      src_ip_header: "X-Forwarded-For"
-      listen: :80
-      cert:
-      key:
-      idle_timeout: 10 # 空连接超时。单位秒。默认 30。
-
   # 缓存
   - tag: lazy_cache
     type: cache
@@ -43,8 +21,10 @@ plugins:
     args:
       concurrent: 2
       upstreams:
-        - addr: udp://114.114.114.114
-        - addr: udp://223.5.5.5
+        - addr: udp://61.153.177.196
+        - addr: udp://61.153.177.197
+        # - addr: udp://114.114.114.114
+        # - addr: udp://223.5.5.5
 
   # 转发 自建递归dns
   - tag: forward_china_recursive
@@ -124,7 +104,7 @@ plugins:
       - matches: has_resp
         exec: accept
 
-      - exec: $cache
+      - exec: $lazy_cache
       - matches: has_resp
         exec: accept
 
@@ -134,3 +114,28 @@ plugins:
         exec: accept
 
       - exec: $common_domain
+
+  # 服务器插件
+  - tag: udp_server
+    type: udp_server
+    args:
+      entry: main_sequence
+      listen: :53
+
+  - tag: tcp_server
+    type: tcp_server
+    args:
+      entry: main_sequence
+      listen: :53
+
+  - tag: http_server
+    type: http_server
+    args:
+      entries:
+        - path: /dns-query
+          exec: main_sequence
+      src_ip_header: "X-Forwarded-For"
+      listen: :80
+      cert:
+      key:
+      idle_timeout: 10 # 空连接超时。单位秒。默认 30。
