@@ -82,7 +82,7 @@ plugins:
       - matches: resp_ip $china_ip
         exec: return
         # exec: $forward_china_public
-      - matches: "!has_resp $china_ip"
+      - matches: "!resp_ip $china_ip"
         exec: return
         # exec: $forward_default
 
